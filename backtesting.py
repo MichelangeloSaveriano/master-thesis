@@ -9,15 +9,25 @@ def compute_factor_residuals(X_train, factors_train, X_test=None, factors_test=N
     if (X_test is None) or (factors_test is None):
         return train_residuals
     test_residuals = X_test - factor_model.predict(factors_test)
+    # print(type(train_residuals), type(test_residuals))
     return train_residuals, test_residuals
 
 
 def evaluate_split_returns(train_returns, test_returns, residuals_methods, spreads_methods, trading_methods):
     l = []
-    test_returns_fwd = test_returns.shift(-1).iloc[:-1]
+    test_returns_fwd = test_returns.shift(-1).iloc[:-1].copy()
     for res_name, res_func in residuals_methods.items():
         X_train, X_test = res_func(train_returns, test_returns)
-
+        print(type(X_train), type(X_test))
+        
+        # Remove later
+        X_train_std = X_train.std()
+        X_train = X_train / X_train_std
+        X_train = X_train.cumsum()
+        X_test = X_test / X_train_std
+        X_test = X_test.cumsum() + X_train.iloc[-1]
+        
+        
         l1 = []
         for spreads_name, spreads_func in spreads_methods.items():
             spreads_train, spreads_test, L, L_sqrt = compute_spreads(X_train, X_test, spreads_func)
@@ -54,8 +64,8 @@ def evaluate_split_returns_from_idx(merged_df, factors_columns, idx_tuple,
     # Remove NaN from return columns
     not_na_columns = ~returns_split_train.isna().any(axis=0)
     not_na_columns &= ~returns_split_test.isna().any(axis=0)
-    train_returns = returns_split_train.loc[:, not_na_columns]
-    test_returns = returns_split_test.loc[:, not_na_columns]
+    train_returns = returns_split_train.loc[:, not_na_columns]# .values
+    test_returns = returns_split_test.loc[:, not_na_columns]# .values
 
     # Define residuals methods
     residuals_methods = {}

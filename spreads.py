@@ -29,7 +29,8 @@ def compute_corr_L(k, use_abs=True):
 
         if use_abs:
             L *= S_sign
-
+        
+        L = L.T
         L_sqrt = L
         return L, L_sqrt
 
@@ -41,9 +42,13 @@ def compute_SGS_L(alpha=1, beta=1, laplacian_root=True,
     def L_SGS(X_train):
         if normalize:
             X_train = X_train / (X_train ** 2).sum()
-        A = log_degree_barrier(X_train.T, alpha=alpha, beta=alpha)
+        A = log_degree_barrier(X_train.T, alpha=alpha, beta=beta)
         A *= A > threshold
-        L = np.diag(A.sum(axis=0)) - A
+        degree = A.sum(axis=0)
+        norm = np.diag(1 / np.sqrt(degree + (degree==0)))
+        D = np.diag(degree)
+        L = D - A
+        L = (norm @ L @ norm)
         L_sqrt = L
 
         if laplacian_root:
@@ -53,8 +58,9 @@ def compute_SGS_L(alpha=1, beta=1, laplacian_root=True,
         if adjust_laplacian:
             A_sqrt = np.diag(np.diag(L_sqrt)) - L_sqrt
             X_train_pred = X_train @ A_sqrt
-            beta = (X_train * X_train_pred).sum(axis=0) / (X_train ** 2).sum(axis=0)
-            L_sqrt = (np.diag(1 / beta) - A_sqrt)
+            beta_ = (X_train * X_train_pred).sum(axis=0) / (X_train ** 2).sum(axis=0)
+            L_sqrt = (np.diag(1 / beta_) - A_sqrt)
+            L_sqrt = np.diag(beta_) @ L_sqrt
         return L, L_sqrt
 
     return L_SGS
@@ -88,17 +94,23 @@ def compute_LGMRF_L(use_correlations=True, use_abs=True, reltol=3e-4,
         if adjust_laplacian:
             A_sqrt = np.diag(np.diag(L_sqrt)) - L_sqrt
             X_train_pred = X_train @ A_sqrt
-            beta = (X_train * X_train_pred).sum(axis=0) / (X_train ** 2).sum(axis=0)
-            L_sqrt = (np.diag(1 / beta) - A_sqrt)
+            beta_ = (X_train * X_train_pred).sum(axis=0) / (X_train ** 2).sum(axis=0)
+            L_sqrt = (np.diag(1 / beta_) - A_sqrt)
+            L_sqrt = np.diag(beta_) @ L_sqrt
         return L, L_sqrt
 
     return L_LGMRF
 
 
-def compute_spreads(X_train, X_test, method, fit_intercept=False):
+def compute_spreads(X_train, X_test, method, fit_intercept=False, normalize=True):
     train_returns = X_train.values
     test_returns = X_test.values
 
+    if normalize:
+        train_std = train_returns.std(axis=0, keepdims=True)
+        train_returns /= train_std
+        test_returns /= train_std
+    
     if fit_intercept:
         train_returns = np.hstack([train_returns, np.ones((train_returns.shape[0], 1))])
         test_returns = np.hstack([test_returns, np.ones((test_returns.shape[0], 1))])

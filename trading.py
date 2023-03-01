@@ -5,30 +5,40 @@ import numpy as np
 def quantiles_std_trading_rule(q, w, gamma, trading_type):
     def q_std_trading(train_spreads, test_spreads):
         _q = q
+        _gamma = gamma
+
+        q_none = _q is None
+        gamma_none = _gamma is None
+        if q_none:
+            _q = 1
+        if gamma_none:
+            _gamma = 0
+
         rolling_spreads = pd.concat([train_spreads, test_spreads]).rolling(w, min_periods=1).mean()
         train_rolling_spreads = rolling_spreads.loc[train_spreads.index]
         test_rolling_spreads = rolling_spreads.loc[test_spreads.index]
-        rolling_spreads_std = rolling_spreads.rolling(len(rolling_spreads), min_periods=1).std().loc[test_spreads.index]
-        
+        rolling_spreads_std = train_rolling_spreads.std()
 
-        if trading_type == 'both':
-            _q /= 2
+        _q /= 2
         lower, upper = np.quantile(test_rolling_spreads,
                                    (_q, 1 - _q), axis=1).reshape((2, -1, 1))
 
         trading_mask = np.zeros_like(test_rolling_spreads)
 
         if (trading_type == 'short') or (trading_type == 'both'):
-            q_mask = (test_rolling_spreads >= upper) | (q == 1)
-            std_mask = (test_spreads - test_rolling_spreads >= gamma * rolling_spreads_std) | (gamma == 0)
+            q_mask = (test_rolling_spreads >= upper) | q_none
+            std_mask = (test_rolling_spreads >= _gamma * rolling_spreads_std) | gamma_none
             short_mask = q_mask & std_mask
             short_mask /= short_mask.sum(axis=1).values.reshape((-1, 1))
             short_mask = short_mask.fillna(0)
-            trading_mask = trading_mask + short_mask
+            if trading_type == 'short':
+                trading_mask = trading_mask + short_mask
+            elif trading_type == 'both':
+                trading_mask = trading_mask - short_mask
 
         if (trading_type == 'long') or (trading_type == 'both'):
-            q_mask = (test_rolling_spreads <= lower) | (q == 1)
-            std_mask = (test_spreads - test_rolling_spreads <= -gamma * rolling_spreads_std) | (gamma == 0)
+            q_mask = (test_rolling_spreads <= lower) | q_none
+            std_mask = (test_rolling_spreads <= -_gamma * rolling_spreads_std) | gamma_none
             long_mask = q_mask & std_mask
             long_mask /= long_mask.sum(axis=1).values.reshape((-1, 1))
             long_mask = long_mask.fillna(0)
